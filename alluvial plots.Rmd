@@ -1,0 +1,218 @@
+---
+title: "sankey_alluvial_plots"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+<http://www.datasmith.org/2020/05/02/alluvial-plots-vs-sankey-diagrams/>The two diagrams above are saying very different kinds of thing.  The alluvial plot example is showing us what proportion of some population has various characteristics — In other words, this diagram is taking a set of facts and breaking them down by a set of categorical dimensions.
+
+By contrast, the Sankey plot is showing us a flow from left to the right. It doesn't break into dimensions. 
+
+To summarize, then:
+
+Alluvial plot: -- useful to show logistic regression classification process with categorical variables
+1. Shows how a population of facts is allocated across categorical dimensions.
+Left/right position has no particular significance; dimensions could be in any order.
+‘Nodes’ are lined up in columns.
+Is useful for showing how features of a population are related — for example, answering questions like ‘how many people have features A and B, compared to how many have B but not A?’
+Sankey diagram:
+Shows how quantities flow from one state to another.
+Left/right position shows movement or change.
+‘Nodes’ could be anywhere, and must be laid out by an algorithm.
+Is useful for showing flows or processes where the amount, size, or population of something needs to be tracked — for example, answering questions like ‘out of the energy in system A, how much came from systems B and C and where will most of it go?’
+
+
+### Using ggalluvial package
+```{r using ggalluvial}
+library(ggalluvial)
+library(ggplot2)
+library("alluvial")
+library("dplyr")
+library("magrittr")
+data("Titanic")
+### ggalluvial only accept wide format
+titan <- as.data.frame(Titanic, stringsAsFactors = FALSE)
+
+titan %>% 
+  head() %>% 
+  knitr::kable()
+ggalluvial::is_alluvia_form(titan)
+titan[,1:4]
+
+alluvial(titan[,1:4], freq = titan$Freq,
+         col = ifelse(titan$Survived == "Yes", "darkgreen", "darkgrey"),
+         border = ifelse(titan$Survived == "Yes", "darkgreen", "darkgrey"),
+         hide = titan$Freq == 0,
+         cex = 0.7)
+
+
+```
+
+Vertical sizes of the blocks are proportional to the frequency, and so are the widths of the alluvia. Alluvia represent all combinations of values of the variables in the dataset. By default the vertical order of the alluvia is determined by alphabetical ordering of the values on each variable lexicographically (last variable changes first) drawn from bottom to top. In this example, the color is determined by passengers’ survival status, i.e. passenger who survived are represented with orange alluvia.
+
+Alluvial diagrams are very useful in reading various conditional and uncoditional distributions in a multivariate dataset. For example, we can see that:
+
+Most of the Crew did not survived – majority of the height of the Crew category is covered by grey alluvia.
+Majortity of the Crew where adult men.
+Almost all women from the 1st Class did survive.
+The women who did not survive come mostly from 3rd class.
+
+
+
+## Customize -- order, color, hide 
+
+<https://cran.r-project.org/web/packages/alluvial/vignettes/alluvial.html>
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+y<-titan%>%group_by(Survived,Age,Sex)%>%summarise(n=sum(Freq))
+
+alluvial(y[,1:3], freq=y$n, 
+         # col = RColorBrewer::brewer.pal(8, "Set1"),
+         col = ifelse(y$Sex == "Male", "orange", "grey"),
+         alpha = 0.8,
+         blocks = FALSE,
+         ordering = list(  ## accept a list of arrays of orders for each dimension, numeric vectors or NULLs one for each variable in the data
+           order(y$Survived, y$Sex == "Male"), ## order Survived by putting male first
+           order(y$Age, y$Sex == "Male"),## sort age by putting male first
+           NULL ## leave default order for sex
+         )
+)
+```
+
+### Another example 
+
+In the example below alluvia are colored by sex (red=Female, blue=Male) and survival status (bright=survived, dark=did not survive). Each category block is a stacked barchart showing relative freuquencies of man/women who did/did not survive. The alluvia are reordered on the last axis (Age) so that Sex categories are next each other (red together and blue together):
+
+```{r}
+pal <- c("red4", "lightskyblue4", "red", "lightskyblue")
+tit <- titan %>% mutate(ss = paste(Survived,Sex), k = pal[match(ss,sort(unique(ss)))])
+tit
+alluvial(tit[,c(4,2,3)],freq = tit$Freq,
+         hide = tit$Freq<15,
+         col=tit$k,border = tit$k,blocks = FALSE,
+         ordering = list(NULL,NULL, order(tit$Age,tit$Sex)))
+
+```
+
+## Time series
+```{r}
+Refugees %>% 
+  head() %>% 
+  knitr::kable()
+```
+
+```{r}
+set.seed(39) # for nice colours
+cols <- hsv(h = sample(1:10/10), 
+            s = sample(3:12)/15,
+            v = sample(3:12)/15)
+
+alluvial_ts(Refugees, wave = .3, ygap = 5, 
+            col = cols, plotdir = 'centred', alpha=.9,
+            grid = TRUE, grid.lwd = 5, xmargin = 0.5, 
+            lab.cex = .8,  axis.cex = .8, leg.cex = .7, leg.col = 'white',
+            ylab = '', xlab = '', border = NA, 
+            title = "UNHCR-recognised refugees\nTop 10 countries (2003-13)\n")
+
+```
+## Using ggplot2: ggalluvial package
+
+**ggalluvial** recognizes both long and wide format of categorical repeated measures data. Each row corresponds to a cohort of observations that take a specific value at each variable and each variable has its own column. An additional column contains the quantity of each row, eg the number of observation units in the cohort, aka, frequency, which is used to control the heights of the strata. 
+```{r}
+data("UCBAdmissions")
+
+df <- as.data.frame(UCBAdmissions)
+
+
+
+ggplot(data=df,aes(y=Freq,axis1= Gender,axis2=Dept))+
+  geom_alluvium(aes(fill=Admit),width = 1/12)+
+  geom_stratum(width = 1/12, fill="black",color="grey")+
+  geom_label(stat = "stratum",aes(label=after_stat(stratum)))+
+  scale_x_discrete(limits=c("Gender","Dept"),expand = c(0.05,0.05))+
+  scale_fill_brewer(type='qual',palette = "Set1")+
+  ggtitle("UC Berkeley admissions and rejections, by sex and department")
+
+
+
+```
+```{r}
+data(Refugees, package = "alluvial")
+country_regions <- c(
+  Afghanistan = "Middle East",
+  Burundi = "Central Africa",
+  `Congo DRC` = "Central Africa",
+  Iraq = "Middle East",
+  Myanmar = "Southeast Asia",
+  Palestine = "Middle East",
+  Somalia = "Horn of Africa",
+  Sudan = "Central Africa",
+  Syria = "Middle East",
+  Vietnam = "Southeast Asia"
+)
+Refugees$region <- country_regions[Refugees$country]
+ggplot(data = Refugees,
+       aes(x = year, y = refugees, alluvium = country)) +
+  geom_alluvium(aes(fill = country, colour = country),
+                alpha = .75, decreasing = FALSE) +
+  scale_x_continuous(breaks = seq(2003, 2013, 2)) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = -30, hjust = 0)) +
+  scale_fill_brewer(type = "qual", palette = "Set3") +
+  scale_color_brewer(type = "qual", palette = "Set3") +
+  facet_wrap(~ region, scales = "fixed") +
+  ggtitle("refugee volume by country and region of origin")
+```
+### geom_flow
+
+suitable for repeated measures data,The format allows us to assign aesthetics that change from axis to axis along the same alluvium, which is useful for repeated measures datasets. This requires generating a separate graphical object for each flow, as implemented in geom_flow(). The plot below uses a set of (changes to) students’ academic curricula over the course of several semesters. Since geom_flow() calls stat_flow() by default (see the next example), we override it with stat_alluvium() in order to track each student across all semesters:
+
+```{r}
+data(majors)
+majors$curriculum <- as.factor(majors$curriculum)
+
+ggplot(majors,
+       aes(x = semester, stratum = curriculum, alluvium = student,
+           fill = curriculum, label = curriculum)) +
+  scale_fill_brewer(type = "qual", palette = "Set2") +
+  geom_flow(stat = "alluvium", lode.guidance = "frontback",
+            color = "darkgray") +
+  geom_stratum() +
+  theme(legend.position = "bottom") +
+  ggtitle("student curricula across several semesters")
+```
+
+### Aggregate 
+
+Finally, lode format gives us the option to aggregate the flows between adjacent axes, which may be appropriate when the transitions between adjacent axes are of primary importance. We can demonstrate this option on data from the influenza vaccination surveys<https://cran.r-project.org/web/packages/ggalluvial/vignettes/ggalluvial.html>. The data, including one question from each of three surveys, has been aggregated by response profile: Each “subject” (mapped to alluvium) actually represents a cohort of subjects who responded the same way on all three questions, and the size of each cohort (mapped to y) is recorded in “freq”.
+```{r}
+data(vaccinations)
+
+vaccinations <- transform(vaccinations,
+                          response = factor(response, rev(levels(response))))
+ggplot(vaccinations,
+       aes(x = survey, stratum = response, alluvium = subject,
+           y = freq,
+           fill = response, label = response)) +
+  scale_x_discrete(expand = c(.1, .1)) +
+  geom_flow() +
+  geom_stratum(alpha = .5) +
+  geom_text(stat = "stratum", size = 3) +
+  theme(legend.position = "none") +
+  ggtitle("vaccination survey responses at three points in time")
+```
+
+
+
+
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
